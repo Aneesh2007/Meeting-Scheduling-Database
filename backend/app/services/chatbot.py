@@ -33,18 +33,17 @@ def get_llm_client() -> AsyncOpenAI:
     """Lazy construction lets /health work even before an LLM key is configured."""
     global _client
     if _client is None:
-        api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("NVIDIA_API_KEY")
         if not api_key:
-            raise HTTPException(status_code=503, detail="Set LLM_API_KEY or OPENAI_API_KEY in backend/.env")
+            raise HTTPException(status_code=503, detail="Set NVIDIA_API_KEY in backend/.env")
         kwargs: dict[str, Any] = {"api_key": api_key}
-        base_url = os.getenv("OPENAI_BASE_URL")
-        if base_url:
-            kwargs["base_url"] = base_url
+        base_url = os.getenv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        kwargs["base_url"] = base_url
         _client = AsyncOpenAI(**kwargs)
     return _client
 
-CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+CHAT_MODEL = os.getenv("CHAT_MODEL", "nemotron-3.5-lightning-30b-a3")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nemotron-3.5-embed-1b")
 TOP_K = int(os.getenv("CHAT_RETRIEVAL_TOP_K", "6"))
 MIN_SIMILARITY = float(os.getenv("CHAT_MIN_SIMILARITY", "0.20"))
 MAX_HISTORY_MESSAGES = 10
@@ -197,7 +196,6 @@ async def make_plan(*, user_id: int, message: str, history: list[ChatTurn], even
             model=CHAT_MODEL,
             messages=messages,
             temperature=0.1,
-            response_format={"type": "json_object"},
         )
         return LLMPlan.model_validate_json(response.choices[0].message.content or "{}")
     except HTTPException:
