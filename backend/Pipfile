@@ -8,8 +8,8 @@ fastapi = "*"
 uvicorn = "*"
 python-dotenv = "*"
 psycopg = {extras = ["binary", "pool"], version = "*"}
-openai = "*"
-pydantic = "*"
+openai = ">=1.68.0"
+pydantic = ">=2.7.0"
 
 [dev-packages]
 
