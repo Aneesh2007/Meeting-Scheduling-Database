@@ -1,0 +1,3 @@
+# Install into backend environment: pipenv install -r requirements-chatbot.txt
+openai>=1.68.0
+pydantic>=2.7.0

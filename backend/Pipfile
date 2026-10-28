@@ -8,9 +8,11 @@ fastapi = "*"
 uvicorn = "*"
 python-dotenv = "*"
 psycopg = {extras = ["binary", "pool"], version = "*"}
+openai = "*"
+pydantic = "*"
 
 [dev-packages]
 
 [requires]
 python_version = "3.13"
-python_full_version = "3.13.5"
+python_full_version = "3.13"
