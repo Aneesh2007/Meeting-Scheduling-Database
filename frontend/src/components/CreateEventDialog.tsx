@@ -1,4 +1,3 @@
-
 import { useState, type FormEvent } from "react"
 import { Plus } from "lucide-react"
 
@@ -15,11 +14,17 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  createEvent as apiCreateEvent,
+  findUsers,
+  type BackendEvent,
+} from "@/lib/api"
 
-import type { CreateMeetingInput } from "@/types/meeting"
+import type { MeetingEvent } from "@/types/meeting"
 
 type CreateEventDialogProps = {
-  onCreate: (event: CreateMeetingInput) => void
+  userId: number
+  onCreate: (backend: BackendEvent) => void
 }
 
 function toDateTimeLocal(date: Date) {
@@ -42,6 +47,7 @@ function getDefaultEnd(start: Date) {
 }
 
 export default function CreateEventDialog({
+  userId,
   onCreate,
 }: CreateEventDialogProps) {
   const [open, setOpen] = useState(false)
@@ -54,6 +60,8 @@ export default function CreateEventDialog({
     toDateTimeLocal(getDefaultEnd(getDefaultStart())),
   )
   const [participants, setParticipants] = useState("")
+  const [participantIds, setParticipantIds] = useState<number[]>([])
+  const [resolving, setResolving] = useState(false)
   const [error, setError] = useState("")
 
   function resetForm() {
@@ -64,7 +72,56 @@ export default function CreateEventDialog({
     setStart(toDateTimeLocal(defaultStart))
     setEnd(toDateTimeLocal(getDefaultEnd(defaultStart)))
     setParticipants("")
+    setParticipantIds([])
     setError("")
+  }
+
+  async function resolveParticipants() {
+    if (!participants.trim()) {
+      setParticipantIds([])
+      return
+    }
+
+    setResolving(true)
+    setError("")
+
+    try {
+      const names = participants
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+
+      const resolvedIds: number[] = []
+      const unresolved: string[] = []
+
+      for (const name of names) {
+        const users = await findUsers(name, 5)
+        const match = users.find(
+          (u) =>
+            u.username.toLowerCase() === name.toLowerCase() ||
+            u.email.toLowerCase() === name.toLowerCase() ||
+            u.username.toLowerCase().includes(name.toLowerCase()) ||
+            u.email.toLowerCase().includes(name.toLowerCase()),
+        )
+        if (match) {
+          resolvedIds.push(match.user_id)
+        } else {
+          unresolved.push(name)
+        }
+      }
+
+      setParticipantIds([...new Set(resolvedIds)])
+
+      if (unresolved.length > 0) {
+        setError(
+          `Could not find users: ${unresolved.join(", ")}. They will not be invited.`,
+        )
+      }
+    } catch {
+      setError("Failed to look up participants.")
+    } finally {
+      setResolving(false)
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -79,25 +136,23 @@ export default function CreateEventDialog({
       return
     }
 
-    const participantList = [
-      ...new Set(
-        participants
-          .split(",")
-          .map((participant) => participant.trim())
-          .filter(Boolean),
-      ),
-    ]
-
-    onCreate({
+    apiCreateEvent(userId, {
       title: title.trim(),
       description: description.trim(),
       start: startDate,
       end: endDate,
-      participants: participantList,
+      participant_ids: participantIds,
     })
-
-    setOpen(false)
-    resetForm()
+      .then((backend) => {
+        onCreate(backend)
+        setOpen(false)
+        resetForm()
+      })
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to create event.",
+        )
+      })
   }
 
   return (
@@ -105,11 +160,14 @@ export default function CreateEventDialog({
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen)
-        if (!nextOpen) setError("")
+        if (!nextOpen) {
+          setError("")
+          resetForm()
+        }
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" className="gap-2">
+        <Button size="sm" className="gap-2" disabled={resolving}>
           <Plus className="size-4" />
           Create event
         </Button>
@@ -132,8 +190,9 @@ export default function CreateEventDialog({
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Project planning"
               required
-              maxLength={150}
+              maxLength={100}
               autoFocus
+              disabled={resolving}
             />
           </div>
 
@@ -145,6 +204,7 @@ export default function CreateEventDialog({
               onChange={(event) => setDescription(event.target.value)}
               placeholder="What is this meeting about?"
               rows={3}
+              disabled={resolving}
             />
           </div>
 
@@ -157,6 +217,7 @@ export default function CreateEventDialog({
                 value={start}
                 onChange={(event) => setStart(event.target.value)}
                 required
+                disabled={resolving}
               />
             </div>
 
@@ -168,6 +229,7 @@ export default function CreateEventDialog({
                 value={end}
                 onChange={(event) => setEnd(event.target.value)}
                 required
+                disabled={resolving}
               />
             </div>
           </div>
@@ -179,16 +241,29 @@ export default function CreateEventDialog({
               value={participants}
               onChange={(event) => setParticipants(event.target.value)}
               placeholder="alex@example.com, Jordan"
+              disabled={resolving}
             />
+            <button
+              type="button"
+              onClick={resolveParticipants}
+              disabled={resolving || !participants.trim()}
+              className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resolving ? "Resolving…" : "Look up users"}
+            </button>
+            {participantIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {participantIds.length} participant(s) resolved
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
-              Separate participants with commas.
+              Separate participants with commas (name or email), then look them
+              up.
             </p>
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
+            <p role="alert" className="text-sm text-destructive">{error}</p>
           )}
 
           <DialogFooter>
@@ -196,14 +271,19 @@ export default function CreateEventDialog({
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
+              disabled={resolving}
             >
               Cancel
             </Button>
-            <Button type="submit">Create event</Button>
+            <Button
+              type="submit"
+              disabled={resolving || !title.trim()}
+            >
+              Create event
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   )
 }
-
