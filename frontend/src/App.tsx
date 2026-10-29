@@ -12,7 +12,6 @@ import {
   findUsers,
   listEvents,
   backendEventToMeetingEvent,
-  type BackendEvent,
 } from "@/lib/api"
 
 import ChatPanel from "@/components/ChatPanel"
@@ -23,7 +22,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
-import type { CreateMeetingInput, MeetingEvent } from "@/types/meeting"
+import type { MeetingEvent } from "@/types/meeting"
 
 const initialSql = `SELECT death 
 FROM chitraguptas_records
@@ -51,7 +50,7 @@ export default function App() {
         limit: 200,
       })
       setEvents(
-        backendEvents.map((e) => backendEventToMeetingEvent(e, currentUserId)),
+        backendEvents.map((e) => backendEventToMeetingEvent(e)),
       )
     } catch (err) {
       console.error("Failed to load events:", err)
@@ -61,12 +60,10 @@ export default function App() {
   }, [currentUserId])
 
   useEffect(() => {
+    // This effect synchronizes calendar state with the selected backend user.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchEvents()
   }, [fetchEvents])
-
-  function handleCreateEvent(input: CreateMeetingInput) {
-    // Handled by CalendarPanel via API
-  }
 
   if (currentUserId === null) {
     return (
@@ -158,7 +155,11 @@ export default function App() {
               maxSize="60%"
               className="min-h-0 min-w-0"
             >
-              <ChatPanel onSqlChange={setSql} userId={currentUserId} />
+              <ChatPanel
+                onSqlChange={setSql}
+                userId={currentUserId}
+                onActionCompleted={fetchEvents}
+              />
             </ResizablePanel>
 
             <ResizableHandle
@@ -173,7 +174,6 @@ export default function App() {
               <CalendarPanel
                 userId={currentUserId}
                 events={events}
-                onCreateEvent={handleCreateEvent}
                 onEventsChange={setEvents}
               />
             </ResizablePanel>

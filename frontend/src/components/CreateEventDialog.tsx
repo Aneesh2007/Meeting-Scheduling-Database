@@ -20,8 +20,6 @@ import {
   type BackendEvent,
 } from "@/lib/api"
 
-import type { MeetingEvent } from "@/types/meeting"
-
 type CreateEventDialogProps = {
   userId: number
   onCreate: (backend: BackendEvent) => void
@@ -166,11 +164,13 @@ export default function CreateEventDialog({
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button size="sm" className="gap-2" disabled={resolving}>
+      <DialogTrigger
+        render={<Button size="sm" className="gap-2" disabled={resolving} />}
+      >
+        <span className="inline-flex items-center gap-2">
           <Plus className="size-4" />
           Create event
-        </Button>
+        </span>
       </DialogTrigger>
 
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">

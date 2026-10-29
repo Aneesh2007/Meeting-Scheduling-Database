@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import moment from "moment"
 import {
   momentLocalizer,
@@ -7,14 +7,12 @@ import {
 
 import ShadcnBigCalendar from "@/components/shadcn-big-calendar/shadcn-big-calendar"
 import CreateEventDialog from "@/components/CreateEventDialog"
-import type { CreateMeetingInput, MeetingEvent } from "@/types/meeting"
+import type { MeetingEvent } from "@/types/meeting"
 import {
-  createEvent as apiCreateEvent,
   updateEvent as apiUpdateEvent,
   deleteEvent as apiDeleteEvent,
   rescheduleEvent as apiRescheduleEvent,
   duplicateEvent as apiDuplicateEvent,
-  type BackendEvent,
 } from "@/lib/api"
 import {
   Button,
@@ -31,27 +29,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, Clock, Copy, Mail } from "lucide-react"
 
 const localizer = momentLocalizer(moment)
 
 type CalendarPanelProps = {
   userId: number
   events: MeetingEvent[]
-  onCreateEvent: (event: CreateMeetingInput) => void
-  onEventsChange: (events: MeetingEvent[]) => void
-}
-
-function formatEventTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-}
-
-function formatEventDate(date: Date) {
-  return date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    weekday: "short",
-  })
+  onEventsChange: React.Dispatch<React.SetStateAction<MeetingEvent[]>>
 }
 
 // -------------------------------------------------------
@@ -138,10 +122,12 @@ function EditEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={!open}>
+      <DialogTrigger
+        render={<Button variant="outline" size="sm" disabled={!open} />}
+      >
+        <span>
           Edit
-        </Button>
+        </span>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -271,10 +257,12 @@ function RescheduleEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={!open}>
+      <DialogTrigger
+        render={<Button variant="outline" size="sm" disabled={!open} />}
+      >
+        <span>
           Reschedule
-        </Button>
+        </span>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -337,13 +325,14 @@ function DuplicateEventDialog({
   onClose,
   open,
 }: DuplicateEventDialogProps) {
-  const [newStart, setNewStart] = useState(
-    new Date(
-      Date.now() + 60 * 60 * 1000 - new Date().getTimezoneOffset() * 60_000,
+  const [newStart, setNewStart] = useState(() => {
+    const now = new Date()
+    return new Date(
+      now.getTime() + 60 * 60 * 1000 - now.getTimezoneOffset() * 60_000,
     )
       .toISOString()
-      .slice(0, 16),
-  )
+      .slice(0, 16)
+  })
   const [error, setError] = useState("")
 
   function handleSubmit(evt: React.FormEvent<HTMLFormElement>) {
@@ -351,8 +340,6 @@ function DuplicateEventDialog({
     setError("")
 
     const startDate = new Date(newStart)
-    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000)
-
     apiDuplicateEvent(userId, Number(event.id), startDate)
       .then((backend) => {
         onDuplicate({
@@ -374,10 +361,12 @@ function DuplicateEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" disabled={!open}>
+      <DialogTrigger
+        render={<Button variant="outline" size="sm" disabled={!open} />}
+      >
+        <span>
           Duplicate
-        </Button>
+        </span>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -419,7 +408,6 @@ function DuplicateEventDialog({
 export default function CalendarPanel({
   userId,
   events,
-  onCreateEvent,
   onEventsChange,
 }: CalendarPanelProps) {
   const [view, setView] = useState<View>("week")
@@ -428,7 +416,6 @@ export default function CalendarPanel({
   const [dialogMode, setDialogMode] = useState<
     "edit" | "reschedule" | "duplicate" | null
   >(null)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   const editOpen = dialogMode === "edit" && selectedEvent != null
   const rescheduleOpen = dialogMode === "reschedule" && selectedEvent != null
@@ -491,7 +478,6 @@ export default function CalendarPanel({
               participants: [],
             }
             onEventsChange((current) => [...current, newEvent])
-            setCreateDialogOpen(false)
           }}
         />
 
@@ -563,5 +549,3 @@ export default function CalendarPanel({
     </section>
   )
 }
-
-
