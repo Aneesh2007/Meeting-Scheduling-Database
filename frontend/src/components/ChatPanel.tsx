@@ -25,6 +25,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller"
+import { sendChat } from "@/lib/api"
 
 type ChatMessage = {
   id: string
@@ -34,6 +35,13 @@ type ChatMessage = {
 
 type ChatPanelProps = {
   onSqlChange: (sql: string) => void
+  userId: number
+  onActionCompleted: () => void
+}
+
+type PendingAction = {
+  id: string
+  summary: string
 }
 
 const welcomeMessage: ChatMessage = {
@@ -43,59 +51,52 @@ const welcomeMessage: ChatMessage = {
     " ",
 }
 
-function mockReply(text: string) {
-  const query = text.toLowerCase()
-
-  if (query.includes("list") || query.includes("upcoming")) {
-    return {
-      content:
-        "Here's a preview query for upcoming meetings. This is a mock response; no database was queried.",
-      sql: `SELECT id, title, start_time, end_time
-FROM meetings
-WHERE start_time >= CURRENT_TIMESTAMP
-ORDER BY start_time ASC;`,
-    }
-  }
-
-  if (
-    query.includes("schedule") ||
-    query.includes("book") ||
-    query.includes("create")
-  ) {
-    return {
-      content:
-        "I'll help plan that meeting. The connected backend will need to check participant availability and conflicts before confirming a slot. No meeting has been created yet.",
-      sql: `SELECT participant_id, start_time, end_time
-FROM meeting_availability
-WHERE participant_id IN (:participant_ids)
-  AND start_time >= :preferred_start
-ORDER BY start_time ASC;`,
-    }
-  }
-
-  return {
-    content:
-      "Could you provide the participants, a preferred date or time range, and the expected duration?",
-    sql: `SELECT id, name, email
-FROM participants
-WHERE name ILIKE :participant_search
-ORDER BY name ASC;`,
-  }
-}
-
-export default function ChatPanel({ onSqlChange }: ChatPanelProps) {
+export default function ChatPanel({
+  onSqlChange,
+  userId,
+  onActionCompleted,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     welcomeMessage,
   ])
   const [input, setInput] = useState("")
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function confirmAction() {
+    if (!pendingAction) return
+
+    try {
+      const reply = await sendChat(userId, "Confirm", [], pendingAction.id)
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: reply.reply,
+        },
+      ])
+      setPendingAction(null)
+      onActionCompleted()
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? error.message
+              : "The calendar operation failed.",
+        },
+      ])
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const text = input.trim()
     if (!text) return
-
-    const reply = mockReply(text)
 
     setMessages((current) => [
       ...current,
@@ -107,12 +108,47 @@ export default function ChatPanel({ onSqlChange }: ChatPanelProps) {
       {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: reply.content,
+        content: "Thinking…",
       },
     ])
-
-    onSqlChange(reply.sql)
     setInput("")
+
+    try {
+      const history = messages
+        .filter((message) => message.id !== "welcome" && message.content !== "Thinking…")
+        .map(({ role, content }) => ({ role, content }))
+      const reply = await sendChat(userId, text, history)
+      setMessages((current) => [
+        ...current.slice(0, -1),
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: reply.reply,
+        },
+      ])
+      setPendingAction(
+        reply.pending_action
+          ? {
+              id: reply.pending_action.id,
+              summary: reply.pending_action.summary,
+            }
+          : null,
+      )
+      onSqlChange(reply.sql_preview ?? "-- No backend preview available")
+    } catch (error) {
+      setMessages((current) => [
+        ...current.slice(0, -1),
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? error.message
+              : "The assistant request failed.",
+        },
+      ])
+    }
+
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -183,6 +219,15 @@ export default function ChatPanel({ onSqlChange }: ChatPanelProps) {
         </MessageScroller>
       </MessageScrollerProvider>
 
+      {pendingAction && (
+        <div className="shrink-0 border-t p-3">
+          <p className="mb-2 text-sm">{pendingAction.summary}</p>
+          <Button type="button" onClick={confirmAction} size="sm">
+            Confirm action
+          </Button>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="shrink-0 border-t bg-background p-3"
@@ -218,4 +263,3 @@ export default function ChatPanel({ onSqlChange }: ChatPanelProps) {
     </section>
   )
 }
-

@@ -28,16 +28,27 @@ from app.services import availability, events_read, semantic
 logger = logging.getLogger(__name__)
 
 _client: AsyncOpenAI | None = None
+_pending_actions: dict[str, dict[str, Any]] = {}
 
 def get_llm_client() -> AsyncOpenAI:
     """Lazy construction lets /health work even before an LLM key is configured."""
     global _client
     if _client is None:
-        api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+        api_key = (
+            os.getenv("LLM_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+            or os.getenv("NVIDIA_API_KEY")
+        )
         if not api_key:
-            raise HTTPException(status_code=503, detail="Set LLM_API_KEY or OPENAI_API_KEY in backend/.env")
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Set LLM_API_KEY, OPENAI_API_KEY, or NVIDIA_API_KEY "
+                    "in the environment."
+                ),
+            )
         kwargs: dict[str, Any] = {"api_key": api_key}
-        base_url = os.getenv("OPENAI_BASE_URL")
+        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("NVIDIA_NIM_BASE_URL")
         if base_url:
             kwargs["base_url"] = base_url
         _client = AsyncOpenAI(**kwargs)
@@ -201,44 +212,16 @@ async def check_event_availability(
     }
 
 
-async def check_event_availability(
+async def list_upcoming_events(
     *,
     user_id: int,
-    start: datetime,
-    end: datetime,
-) -> dict[str, Any]:
-    if start.tzinfo is None or end.tzinfo is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Start and end times must include timezone information.",
-        )
-
-    if end <= start:
-        raise HTTPException(
-            status_code=422,
-            detail="The end time must be later than the start time.",
-        )
-
-    conflicts = await run_in_threadpool(
-        availability.check_conflicts,
-        user_id,
-        start,
-        end,
-        None,
-    )
-
-    return {
-        "available": len(conflicts) == 0,
-        "conflicts": [
-            {
-                key: _json_value(value)
-                for key, value in conflict.items()
-            }
-            for conflict in conflicts
-        ],
-    }
-
-
+    limit: int = TOP_K,
+) -> list[dict[str, Any]]:
+    rows = await run_in_threadpool(events_read.get_upcoming, user_id, limit)
+    return [
+        {key: _json_value(value) for key, value in row.items()}
+        for row in rows
+    ]
 
 SYSTEM_PROMPT = """
 You are MeetingWise, a helpful AI meeting calendar assistant.
