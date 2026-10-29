@@ -4,7 +4,7 @@
 SELECT event_id, owner_id, title, start_time, end_time, role, status
 FROM UserEvents
 WHERE viewer_id = $1
-  AND start_time < $3
-  AND end_time   > $2
+  AND ($2::timestamptz IS NULL OR end_time   > $2)
+  AND ($3::timestamptz IS NULL OR start_time < $3)
 ORDER BY start_time
 LIMIT $4;
